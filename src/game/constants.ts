@@ -24,7 +24,7 @@ export const COLORS = {
 } as const;
 
 /** За что платформа отвечает — от этого зависит только цвет. */
-export type PlatformKind = 'ground' | 'floating' | 'step';
+export type PlatformKind = "ground" | "floating" | "step";
 
 /** Прямоугольник платформы: левый верхний угол плюс размер. */
 export interface PlatformRect {
@@ -45,7 +45,7 @@ const FLOATING_HEIGHT = 22;
 const STEP_WIDTH = 44;
 
 export const GROUND: PlatformRect = {
-  kind: 'ground',
+  kind: "ground",
   x: 0,
   y: GROUND_TOP,
   width: WORLD_WIDTH,
@@ -54,12 +54,12 @@ export const GROUND: PlatformRect = {
 
 /** Парящая платформа на заданной высоте. */
 function floating(x: number, y: number, width: number): PlatformRect {
-  return { kind: 'floating', x, y, width, height: FLOATING_HEIGHT };
+  return { kind: "floating", x, y, width, height: FLOATING_HEIGHT };
 }
 
 /** Низкая ступенька на земле: Марио через неё перепрыгивает, грибок обходит. */
 function step(x: number, height: number): PlatformRect {
-  return { kind: 'step', x, y: GROUND_TOP - height, width: STEP_WIDTH, height };
+  return { kind: "step", x, y: GROUND_TOP - height, width: STEP_WIDTH, height };
 }
 
 /**
@@ -84,7 +84,11 @@ export const FLOATING_PLATFORMS: readonly PlatformRect[] = [
 export const STEPS: readonly PlatformRect[] = [step(960, 70), step(2180, 60)];
 
 /** Все твёрдые поверхности уровня — с этим массивом работают коллайдеры. */
-export const SOLID_RECTS: readonly PlatformRect[] = [GROUND, ...FLOATING_PLATFORMS, ...STEPS];
+export const SOLID_RECTS: readonly PlatformRect[] = [
+  GROUND,
+  ...FLOATING_PLATFORMS,
+  ...STEPS,
+];
 
 export const MUSHROOM = {
   start: { x: 120, y: 470 },
@@ -132,8 +136,8 @@ export const BULLETS = {
 
 /** Меню паузы: затемнение, заголовок и кнопки. */
 export const PAUSE = {
-  title: 'PAUSE',
-  titleFontSize: '64px',
+  title: "PAUSE",
+  titleFontSize: "64px",
   dimColor: 0x0f172a,
   dimAlpha: 0.8,
   buttonWidth: 220,
@@ -144,12 +148,12 @@ export const PAUSE = {
   buttonEdge: 0x38bdf8,
   /** Обводка и текст кнопки под курсором. */
   buttonHoverEdge: 0xfde047,
-  labelFontSize: '22px',
-  labelColor: '#e2e8f0',
-  hoverLabelColor: '#fde047',
-  hint: 'ESC — продолжить игру',
-  hintFontSize: '18px',
-  hintColor: '#94a3b8',
+  labelFontSize: "22px",
+  labelColor: "#e2e8f0",
+  hoverLabelColor: "#fde047",
+  hint: "ESC — продолжить игру",
+  hintFontSize: "18px",
+  hintColor: "#94a3b8",
   /** Насколько меню приподнято относительно центра экрана. */
   titleOffsetY: -150,
   firstButtonOffsetY: -10,
@@ -163,4 +167,26 @@ export const STOMP = {
   bounceVelocity: -450,
   /** И отлетает в сторону, откуда пришёл. */
   pushVelocity: 140,
+} as const;
+
+/**
+ * Вторая фаза уровня. Игровая механика та же, но Марио стреляет чаще и точнее.
+ * Значения BULLETS.* остаются параметрами первой фазы.
+ */
+export const PHASE2 = {
+  /** Через сколько секунд игрового времени наступает вторая фаза. */
+  threshold: 15,
+  /** Новый ритм стрельбы и скорость пуль. */
+  interval: 900,
+  speed: 540,
+  /** Баннер по центру экрана, который сообщает о смене фазы. */
+  bannerTitle: 'ФАЗА 2',
+  bannerHint: 'Пули чаще и быстрее',
+  bannerTitleFontSize: '72px',
+  bannerHintFontSize: '24px',
+  /** Сколько миллисекунд баннер полностью виден. */
+  notifyDuration: 2000,
+  /** Длительность появления и исчезновения баннера. */
+  bannerFadeIn: 200,
+  bannerFadeOut: 400,
 } as const;

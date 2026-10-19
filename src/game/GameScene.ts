@@ -5,6 +5,7 @@ import {
   MARIO,
   MUSHROOM,
   PAUSE,
+  PHASE2,
   SOLID_RECTS,
   STOMP,
   VIEW_HEIGHT,
@@ -54,8 +55,16 @@ export class GameScene extends Phaser.Scene {
   private marioNextJumpAt = 0;
   private nextShotAt = 0;
 
+  /** Номер фазы: 1 — обычная игра, 2 — с момента, когда пули становятся чаще и быстрее. */
+  private phase = 1;
+  /** Ритм и скорость пуль текущей фазы (базовые значения лежат в BULLETS). */
+  private shotInterval = 0;
+  private bulletSpeed = 0;
+
   private statsText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
+  private phaseBannerTitle!: Phaser.GameObjects.Text;
+  private phaseBannerHint!: Phaser.GameObjects.Text;
   private overlayDim!: Phaser.GameObjects.Rectangle;
   private overlayTitle!: Phaser.GameObjects.Text;
   private overlayHint!: Phaser.GameObjects.Text;
@@ -78,6 +87,10 @@ export class GameScene extends Phaser.Scene {
     this.platforms = [];
     this.pauseButtons = [];
     this.pauseButtonLabels = [];
+    // Рестарт всегда начинается с первой фазы и базовыми параметрами BULLETS.
+    this.phase = 1;
+    this.shotInterval = BULLETS.interval;
+    this.bulletSpeed = BULLETS.speed;
   }
 
   create(): void {
@@ -92,6 +105,7 @@ export class GameScene extends Phaser.Scene {
     this.createInput();
     this.createHud();
     this.createPauseMenu();
+    this.createPhaseBanner();
 
     this.physics.add.collider(this.mushroom, this.platforms);
     this.physics.add.collider(this.mario, this.platforms);
@@ -114,6 +128,9 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'playing') return;
 
     this.levelTime += delta / 1000;
+    if (this.phase === 1 && this.levelTime >= PHASE2.threshold) {
+      this.enterPhase2();
+    }
     this.updateMushroom();
     this.updateMario();
     this.updateShooting();
@@ -215,6 +232,86 @@ export class GameScene extends Phaser.Scene {
   private updateHud(): void {
     const best = Number.isFinite(this.bestTime) ? `   рекорд: ${this.bestTime.toFixed(1)} с` : '';
     this.statsText.setText(`Попыток: ${this.attempts}   время: ${this.levelTime.toFixed(1)} с${best}`);
+  }
+
+  // ---------------------------------------------------------------- фаза 2
+
+  /**
+   * Крупный баннер по центру экрана, который сообщает о переходе во вторую фазу.
+   * Живёт ниже меню паузы (depth 5 против 10-12), поэтому пауза перекрывает его.
+   */
+  private createPhaseBanner(): void {
+    this.phaseBannerTitle = this.add
+      .text(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 - 40, PHASE2.bannerTitle, {
+        ...HUD_STYLE,
+        fontSize: PHASE2.bannerTitleFontSize,
+        color: '#fde047',
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(5)
+      .setShadow(0, 4, '#0f172a', 10)
+      .setAlpha(0)
+      .setVisible(false);
+
+    this.phaseBannerHint = this.add
+      .text(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 + 30, PHASE2.bannerHint, {
+        ...HUD_STYLE,
+        fontSize: PHASE2.bannerHintFontSize,
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(5)
+      .setShadow(0, 3, '#0f172a', 8)
+      .setAlpha(0)
+      .setVisible(false);
+  }
+
+  /**
+   * Вторая фаза: механика та же, но пули летят чаще и быстрее.
+   * Сброс nextShotAt нужен, чтобы новый ритм стрельбы начинался сразу.
+   */
+  private enterPhase2(): void {
+    this.phase = 2;
+    this.shotInterval = PHASE2.interval;
+    this.bulletSpeed = PHASE2.speed;
+    this.nextShotAt = this.time.now + this.shotInterval;
+
+    this.showPhaseBanner();
+  }
+
+  /** Баннер появляется, держится и плавно исчезает. Игра при этом не останавливается. */
+  private showPhaseBanner(): void {
+    const texts = [this.phaseBannerTitle, this.phaseBannerHint];
+
+    for (const text of texts) {
+      text.setVisible(true).setAlpha(0).setScale(0.85);
+    }
+
+    this.tweens.add({
+      targets: texts,
+      alpha: 1,
+      scale: 1,
+      duration: PHASE2.bannerFadeIn,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.time.delayedCall(PHASE2.notifyDuration, () => this.hidePhaseBanner());
+      },
+    });
+  }
+
+  private hidePhaseBanner(): void {
+    this.tweens.add({
+      targets: [this.phaseBannerTitle, this.phaseBannerHint],
+      alpha: 0,
+      duration: PHASE2.bannerFadeOut,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        this.phaseBannerTitle.setVisible(false);
+        this.phaseBannerHint.setVisible(false);
+      },
+    });
   }
 
   // --------------------------------------------------------------- пауза
@@ -321,7 +418,7 @@ export class GameScene extends Phaser.Scene {
     this.setPauseMenuVisible(false);
     // Пока шла пауза, время сцены продолжало идти. Сдвигаем следующий выстрел,
     // иначе пуля вылетит сразу же после возврата в игру.
-    this.nextShotAt = this.time.now + BULLETS.interval;
+    this.nextShotAt = this.time.now + this.shotInterval;
   }
 
   private restartLevel(): void {
@@ -402,7 +499,7 @@ export class GameScene extends Phaser.Scene {
   private updateShooting(): void {
     if (this.time.now < this.nextShotAt) return;
 
-    this.nextShotAt = this.time.now + BULLETS.interval;
+    this.nextShotAt = this.time.now + this.shotInterval;
     this.shoot();
   }
 
@@ -420,7 +517,7 @@ export class GameScene extends Phaser.Scene {
     // Пуля летит по прямой в сторону грибка на момент выстрела.
     const angle =
       Phaser.Math.Angle.Between(x, y, this.mushroom.x, this.mushroom.y) * Phaser.Math.RAD_TO_DEG;
-    const velocity = this.physics.velocityFromAngle(angle, BULLETS.speed);
+    const velocity = this.physics.velocityFromAngle(angle, this.bulletSpeed);
 
     bullet.setActive(true).setVisible(true).setPosition(x, y);
     (bullet.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
