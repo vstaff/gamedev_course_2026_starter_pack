@@ -4,6 +4,7 @@ import {
   COLORS,
   MARIO,
   MUSHROOM,
+  PAUSE,
   SOLID_RECTS,
   STOMP,
   VIEW_HEIGHT,
@@ -13,7 +14,7 @@ import {
 } from './constants';
 import { TEXTURES, createGameTextures } from './textures';
 
-type PlayState = 'playing' | 'dead' | 'won';
+type PlayState = 'playing' | 'paused' | 'dead' | 'won';
 
 const HUD_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'system-ui, sans-serif',
@@ -46,7 +47,7 @@ export class GameScene extends Phaser.Scene {
   private bullets!: Phaser.Physics.Arcade.Group;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private keys!: Record<'left' | 'right' | 'up' | 'jump', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'left' | 'right' | 'up' | 'jump' | 'escape', Phaser.Input.Keyboard.Key>;
 
   /** Куда Марио бежит: -1 влево, 1 вправо. */
   private marioDir = -1;
@@ -59,6 +60,13 @@ export class GameScene extends Phaser.Scene {
   private overlayTitle!: Phaser.GameObjects.Text;
   private overlayHint!: Phaser.GameObjects.Text;
 
+  /** Меню паузы. Прямоугольник — затемнение, остальное — кнопки и подписи. */
+  private pauseDim!: Phaser.GameObjects.Rectangle;
+  private pauseTitle!: Phaser.GameObjects.Text;
+  private pauseHint!: Phaser.GameObjects.Text;
+  private pauseButtons: Phaser.GameObjects.Rectangle[] = [];
+  private pauseButtonLabels: Phaser.GameObjects.Text[] = [];
+
   constructor() {
     super('GameScene');
   }
@@ -68,6 +76,8 @@ export class GameScene extends Phaser.Scene {
     this.levelTime = 0;
     this.marioDir = -1;
     this.platforms = [];
+    this.pauseButtons = [];
+    this.pauseButtonLabels = [];
   }
 
   create(): void {
@@ -81,6 +91,7 @@ export class GameScene extends Phaser.Scene {
     this.createBullets();
     this.createInput();
     this.createHud();
+    this.createPauseMenu();
 
     this.physics.add.collider(this.mushroom, this.platforms);
     this.physics.add.collider(this.mario, this.platforms);
@@ -93,7 +104,10 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.mushroom, true, 0.12, 0.12);
 
     this.nextShotAt = this.time.now + BULLETS.firstShotAt;
-    this.input.keyboard?.on('keydown-R', () => this.scene.restart());
+    this.input.keyboard?.on('keydown-R', this.restartLevel, this);
+    // Esc зарегистрирован в addKeys, поэтому событие срабатывает один раз
+    // за нажатие, а не на автоповторе зажатой клавиши.
+    this.input.keyboard?.on('keydown-ESC', this.togglePause, this);
   }
 
   update(_time: number, delta: number): void {
@@ -160,7 +174,10 @@ export class GameScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
       up: Phaser.Input.Keyboard.KeyCodes.W,
       jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
-    }) as Record<'left' | 'right' | 'up' | 'jump', Phaser.Input.Keyboard.Key>;
+      // Esc нужен зарегистрированным, чтобы событие keydown-ESC срабатывало
+      // один раз за нажатие, а не на автоповторе.
+      escape: Phaser.Input.Keyboard.KeyCodes.ESC,
+    }) as Record<'left' | 'right' | 'up' | 'jump' | 'escape', Phaser.Input.Keyboard.Key>;
   }
 
   private createHud(): void {
@@ -168,7 +185,7 @@ export class GameScene extends Phaser.Scene {
     // а HUD остаётся на месте.
     this.statsText = this.add.text(24, 20, '', HUD_STYLE).setScrollFactor(0);
     this.hintText = this.add
-      .text(24, VIEW_HEIGHT - 44, 'A / D — бег, W или пробел — прыжок, R — начать заново', {
+      .text(24, VIEW_HEIGHT - 44, 'A / D — бег, W или пробел — прыжок, R — начать заново, Esc — пауза', {
         ...HUD_STYLE,
         fontSize: '16px',
         color: '#e2e8f0',
@@ -198,6 +215,121 @@ export class GameScene extends Phaser.Scene {
   private updateHud(): void {
     const best = Number.isFinite(this.bestTime) ? `   рекорд: ${this.bestTime.toFixed(1)} с` : '';
     this.statsText.setText(`Попыток: ${this.attempts}   время: ${this.levelTime.toFixed(1)} с${best}`);
+  }
+
+  // --------------------------------------------------------------- пауза
+
+  /**
+   * Меню паузы. Всё оно висит на экране (scrollFactor 0) и по умолчанию скрыто.
+   * Кнопки кликабельны только пока меню показано: невидимый объект
+   * не получает событий мыши.
+   */
+  private createPauseMenu(): void {
+    this.pauseDim = this.add
+      .rectangle(VIEW_WIDTH / 2, VIEW_HEIGHT / 2, VIEW_WIDTH, VIEW_HEIGHT, PAUSE.dimColor, PAUSE.dimAlpha)
+      .setScrollFactor(0)
+      .setDepth(10)
+      .setVisible(false);
+
+    this.pauseTitle = this.add
+      .text(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 + PAUSE.titleOffsetY, PAUSE.title, {
+        ...HUD_STYLE,
+        fontSize: PAUSE.titleFontSize,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(11)
+      .setVisible(false);
+
+    const resumeY = VIEW_HEIGHT / 2 + PAUSE.firstButtonOffsetY;
+    const restartY = resumeY + PAUSE.buttonHeight + PAUSE.buttonGap;
+
+    this.createPauseButton(VIEW_WIDTH / 2, resumeY, 'Resume', () => this.resumeGame());
+    this.createPauseButton(VIEW_WIDTH / 2, restartY, 'Restart', () => this.restartLevel());
+
+    this.pauseHint = this.add
+      .text(VIEW_WIDTH / 2, restartY + PAUSE.hintOffsetY, PAUSE.hint, {
+        ...HUD_STYLE,
+        fontSize: PAUSE.hintFontSize,
+        color: PAUSE.hintColor,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(11)
+      .setVisible(false);
+  }
+
+  /** Кнопка меню паузы: подложка + подпись, клик по подложке. */
+  private createPauseButton(x: number, y: number, label: string, onClick: () => void): void {
+    const background = this.add
+      .rectangle(x, y, PAUSE.buttonWidth, PAUSE.buttonHeight, PAUSE.buttonColor)
+      .setStrokeStyle(2, PAUSE.buttonEdge)
+      .setScrollFactor(0)
+      .setDepth(11)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true });
+
+    const text = this.add
+      .text(x, y, label, { ...HUD_STYLE, fontSize: PAUSE.labelFontSize, color: PAUSE.labelColor })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(12)
+      .setVisible(false);
+
+    background.on('pointerover', () => {
+      background.setStrokeStyle(2, PAUSE.buttonHoverEdge);
+      text.setColor(PAUSE.hoverLabelColor);
+    });
+    background.on('pointerout', () => {
+      background.setStrokeStyle(2, PAUSE.buttonEdge);
+      text.setColor(PAUSE.labelColor);
+    });
+    background.on('pointerdown', onClick);
+
+    this.pauseButtons.push(background);
+    this.pauseButtonLabels.push(text);
+  }
+
+  private setPauseMenuVisible(visible: boolean): void {
+    this.pauseDim.setVisible(visible);
+    this.pauseTitle.setVisible(visible);
+    this.pauseHint.setVisible(visible);
+
+    for (const button of this.pauseButtons) button.setVisible(visible);
+    for (const label of this.pauseButtonLabels) label.setVisible(visible);
+  }
+
+  /** Esc: открыть меню паузы или, наоборот, продолжить игру. */
+  private togglePause(): void {
+    if (this.state === 'playing') {
+      this.pauseGame();
+    } else if (this.state === 'paused') {
+      this.resumeGame();
+    }
+  }
+
+  private pauseGame(): void {
+    this.state = 'paused';
+    // Мир замирает на месте: физика, пули и Марио ждут, пока игрок вернётся.
+    this.physics.world.pause();
+    this.setPauseMenuVisible(true);
+  }
+
+  private resumeGame(): void {
+    this.state = 'playing';
+    this.physics.world.resume();
+    this.setPauseMenuVisible(false);
+    // Пока шла пауза, время сцены продолжало идти. Сдвигаем следующий выстрел,
+    // иначе пуля вылетит сразу же после возврата в игру.
+    this.nextShotAt = this.time.now + BULLETS.interval;
+  }
+
+  private restartLevel(): void {
+    this.setPauseMenuVisible(false);
+    // Перезапуск создаёт сцену заново, поэтому замороженный мир надо сначала разбудить.
+    this.physics.world.resume();
+    this.state = 'playing';
+    this.scene.restart();
   }
 
   // -------------------------------------------------------------- игрок

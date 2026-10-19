@@ -130,6 +130,32 @@ export const BULLETS = {
   killMargin: 60,
 } as const;
 
+/** Меню паузы: затемнение, заголовок и кнопки. */
+export const PAUSE = {
+  title: 'PAUSE',
+  titleFontSize: '64px',
+  dimColor: 0x0f172a,
+  dimAlpha: 0.8,
+  buttonWidth: 220,
+  buttonHeight: 56,
+  /** Зазор между кнопками по вертикали. */
+  buttonGap: 20,
+  buttonColor: 0x1e293b,
+  buttonEdge: 0x38bdf8,
+  /** Обводка и текст кнопки под курсором. */
+  buttonHoverEdge: 0xfde047,
+  labelFontSize: '22px',
+  labelColor: '#e2e8f0',
+  hoverLabelColor: '#fde047',
+  hint: 'ESC — продолжить игру',
+  hintFontSize: '18px',
+  hintColor: '#94a3b8',
+  /** Насколько меню приподнято относительно центра экрана. */
+  titleOffsetY: -150,
+  firstButtonOffsetY: -10,
+  hintOffsetY: 76,
+} as const;
+
 export const STOMP = {
   /** Столько пикселей допускается между подошвой грибка и головой Марио. */
   tolerance: 18,
